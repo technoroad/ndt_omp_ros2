@@ -264,6 +264,17 @@ pclomp::VoxelGridCovariance<PointT>::applyFilter (PointCloud &output)
     }
   }
 
+  // A voxel with fewer than min_points_per_voxel_ points gets no covariance, and every
+  // lookup skips it. Drop it rather than keep it: on a dense map a third of the voxels,
+  // about 370 bytes each with the map node and the centroid.
+  for (auto it = leaves_.begin (); it != leaves_.end ();)
+  {
+    if (it->second.nr_points < min_points_per_voxel_)
+      it = leaves_.erase (it);
+    else
+      ++it;
+  }
+
   // Second pass: go over all leaves and compute centroids and covariance matrices
   output.points.reserve (leaves_.size ());
   if (searchable_)

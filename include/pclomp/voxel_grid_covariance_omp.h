@@ -303,7 +303,8 @@ namespace pclomp
 
       /** \brief Get the voxel containing point p.
        * \param[in] index the index of the leaf structure node
-       * \return const pointer to leaf structure
+       * \return const pointer to leaf structure, or NULL when the voxel holds fewer than
+       * \ref min_points_per_voxel_ points (those are not kept)
        */
       inline LeafConstPtr
       getLeaf (int index)

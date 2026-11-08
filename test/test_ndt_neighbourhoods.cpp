@@ -1,9 +1,9 @@
 // The voxel lookups NDT runs on every point, and the derivative sums it spreads over
 // threads.
 //
-// VoxelGridCovariance finds a point's voxels through a hash table over its leaves. Its
-// neighbourhoods must be the ones a lookup in getLeaves() gives, in the same order, and
-// a copy must hand out its own leaves. NDT sums the derivatives in per-thread locals;
+// VoxelGridCovariance keeps only the voxels with enough points, and finds a point's
+// voxels through a hash table over them. Its neighbourhoods must be the ones a lookup in
+// getLeaves() gives, in the same order, and a copy must hand out its own leaves. NDT sums the derivatives in per-thread locals;
 // the score, gradient and Hessian must not depend on the thread count.
 #include <gtest/gtest.h>
 
@@ -13,7 +13,9 @@
 #include <pclomp/voxel_grid_covariance_omp.h>
 
 #include <Eigen/Core>
+#include <array>
 #include <cmath>
+#include <map>
 #include <random>
 #include <vector>
 
@@ -131,14 +133,26 @@ std::size_t expectNeighbourhoodsMatchLeafMap(Grid & grid)
 
 TEST(VoxelGridNeighbourhoods, MatchTheLeafMap)
 {
-  Grid grid = makeGrid(makeCloud(0.0f, 1));
-  std::size_t valid = 0;
-  for (const auto & leaf : grid.getLeaves()) {
-    valid += leaf.second.nr_points >= grid.getMinPointPerVoxel();
+  const Cloud::Ptr cloud = makeCloud(0.0f, 1);
+  Grid grid = makeGrid(cloud);
+  std::map<std::array<int, 3>, int> counts;
+  for (const auto & point : cloud->points) {
+    ++counts[{static_cast<int>(std::floor(point.x)), static_cast<int>(std::floor(point.y)),
+        static_cast<int>(std::floor(point.z))}];
   }
-  // Some voxels hold too few points; the lookups must skip them.
-  ASSERT_GT(valid, 100u);
-  ASSERT_LT(valid, grid.getLeaves().size());
+  std::size_t full = 0;
+  for (const auto & count : counts) {
+    full += count.second >= grid.getMinPointPerVoxel();
+  }
+  // Some voxels hold too few points: they are not kept, and the lookups skip them.
+  ASSERT_GT(full, 100u);
+  ASSERT_LT(full, counts.size());
+  EXPECT_EQ(grid.getLeaves().size(), full);
+  for (const auto & leaf : grid.getLeaves()) {
+    // -1 marks a voxel whose covariance was degenerate; it stays, and lookups skip it.
+    EXPECT_TRUE(
+      leaf.second.nr_points >= grid.getMinPointPerVoxel() || leaf.second.nr_points == -1);
+  }
   EXPECT_GT(expectNeighbourhoodsMatchLeafMap(grid), 10000u);
 }
 
